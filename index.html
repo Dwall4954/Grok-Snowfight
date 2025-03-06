@@ -31,13 +31,13 @@
         let isPlayerTurn = true;
         let animationFrameId = null;
         let hitEffect = { target: null, time: 0 };
-        let aimPath = []; // Store aiming trajectory
+        let aimPath = [];
 
         // Draw the scene
         function drawScene() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'white';
-            ctx.fillRect(0, 350, 600, 50); // Snowy ground
+            ctx.fillRect(0, 350, 600, 50);
             ctx.fillStyle = hitEffect.target === 'player' && hitEffect.time > 0 ? 'red' : 'blue';
             ctx.beginPath();
             ctx.arc(playerPos.x, playerPos.y - size/2, size/2, 0, Math.PI * 2);
@@ -50,7 +50,6 @@
             ctx.fillRect(playerPos.x - 20, playerPos.y - size - 10, health.player / 2, 5);
             ctx.fillRect(aiPos.x - 20, aiPos.y - size - 10, health.ai / 2, 5);
 
-            // Draw aiming arc
             if (isPlayerTurn && !animationFrameId) {
                 ctx.strokeStyle = 'gray';
                 ctx.beginPath();
@@ -94,7 +93,6 @@
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
 
-                // Draw projectile with visibility
                 ctx.fillStyle = ammo === 'snowball' ? 'gray' : 'cyan';
                 ctx.strokeStyle = 'black';
                 ctx.beginPath();
@@ -103,8 +101,12 @@
                 ctx.stroke();
 
                 if (Math.abs(x - targetX) < size && y > 350 - size && y < 350) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
                     callback(true);
                 } else if (x > 600 || x < 0 || y > 400) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
                     callback(false);
                 } else {
                     animationFrameId = requestAnimationFrame(step);
@@ -137,7 +139,7 @@
 
                 animateProjectile(aiPos.x, aiPos.y - size/2, angle, power, Math.random() > 0.3 ? 'snowball' : 'frost_bomb', playerPos.x, (hit) => {
                     if (hit) {
-                        health.player -= power === 'snowball' ? 10 : 20;
+                        health.player -= 10; // Fixed damage bug
                         triggerHitEffect('player');
                         aiLastMissed = false;
                     } else {
@@ -146,6 +148,7 @@
                     checkGameOver();
                     isPlayerTurn = true;
                     drawScene();
+                    updateAim(); // Refresh aim after AI turn
                 });
             }, 1000);
         }
@@ -167,6 +170,8 @@
         function resetGame() {
             health = { player: 100, ai: 100 };
             isPlayerTurn = true;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
             aimPath = [];
             drawScene();
             updateAim();
@@ -188,12 +193,13 @@
                 if (health.ai > 0) {
                     isPlayerTurn = false;
                     aiTurn();
+                } else {
+                    isPlayerTurn = true;
+                    updateAim();
                 }
-                aimPath = []; // Clear aim after firing
             });
         });
 
-        // Initial draw and aim update
         drawScene();
         updateAim();
     </script>
