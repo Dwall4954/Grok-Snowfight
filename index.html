@@ -10,9 +10,9 @@
     <canvas id="gameCanvas" width="600" height="400"></canvas>
     <div id="controls">
         <label for="angle">Angle (0-90):</label>
-        <input type="number" id="angle" min="0" max="90" value="45">
+        <input type="number" id="angle" min="0" max="90" value="45" oninput="updateAim()">
         <label for="power">Power (1-100):</label>
-        <input type="number" id="power" min="1" max="100" value="50">
+        <input type="number" id="power" min="1" max="100" value="50" oninput="updateAim()">
         <label for="ammo">Ammo:</label>
         <select id="ammo">
             <option value="snowball">Snowball</option>
@@ -23,41 +23,67 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const playerPos = { x: 100, y: 350 }; // Left side
-        const aiPos = { x: 500, y: 350 };     // Right side
-        const size = 40;                      // Character size
-        const g = 0.2;                        // Gravity (tuned for animation)
+        const playerPos = { x: 100, y: 350 };
+        const aiPos = { x: 500, y: 350 };
+        const size = 40;
+        const g = 0.2;
         let health = { player: 100, ai: 100 };
         let isPlayerTurn = true;
         let animationFrameId = null;
         let hitEffect = { target: null, time: 0 };
+        let aimPath = []; // Store aiming trajectory
 
         // Draw the scene
         function drawScene() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // Snowy ground
             ctx.fillStyle = 'white';
-            ctx.fillRect(0, 350, 600, 50);
-            // Player (blue snowman)
+            ctx.fillRect(0, 350, 600, 50); // Snowy ground
             ctx.fillStyle = hitEffect.target === 'player' && hitEffect.time > 0 ? 'red' : 'blue';
             ctx.beginPath();
             ctx.arc(playerPos.x, playerPos.y - size/2, size/2, 0, Math.PI * 2);
             ctx.fill();
-            // AI (red snowman)
             ctx.fillStyle = hitEffect.target === 'ai' && hitEffect.time > 0 ? 'red' : 'orange';
             ctx.beginPath();
             ctx.arc(aiPos.x, aiPos.y - size/2, size/2, 0, Math.PI * 2);
             ctx.fill();
-            // Health bars
             ctx.fillStyle = 'green';
             ctx.fillRect(playerPos.x - 20, playerPos.y - size - 10, health.player / 2, 5);
             ctx.fillRect(aiPos.x - 20, aiPos.y - size - 10, health.ai / 2, 5);
+
+            // Draw aiming arc
+            if (isPlayerTurn && !animationFrameId) {
+                ctx.strokeStyle = 'gray';
+                ctx.beginPath();
+                ctx.moveTo(playerPos.x, playerPos.y - size/2);
+                for (let point of aimPath) {
+                    ctx.lineTo(point.x, point.y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        // Update aiming trajectory
+        function updateAim() {
+            const angle = parseInt(document.getElementById('angle').value);
+            const power = parseInt(document.getElementById('power').value);
+            const v = power / 10;
+            const theta = angle * Math.PI / 180;
+            const vx = v * Math.cos(theta);
+            const vyInitial = v * Math.sin(theta);
+            aimPath = [];
+            for (let t = 0; t < 50; t += 0.5) {
+                const x = playerPos.x + vx * t;
+                const y = (playerPos.y - size/2) - (vyInitial * t - 0.5 * g * t * t);
+                if (x > 600 || y > 400) break;
+                aimPath.push({ x, y });
+            }
+            drawScene();
         }
 
         // Animate projectile
         function animateProjectile(startX, startY, angle, power, ammo, targetX, callback) {
             let t = 0;
-            const v = power / 10; // Scale power for physics
+            const v = power / 10;
             const theta = angle * Math.PI / 180;
             const vx = v * Math.cos(theta);
             const vyInitial = v * Math.sin(theta);
@@ -68,13 +94,14 @@
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
 
-                // Draw projectile
-                ctx.fillStyle = ammo === 'snowball' ? 'white' : 'cyan';
+                // Draw projectile with visibility
+                ctx.fillStyle = ammo === 'snowball' ? 'gray' : 'cyan';
+                ctx.strokeStyle = 'black';
                 ctx.beginPath();
                 ctx.arc(x, y, ammo === 'snowball' ? 5 : 10, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.stroke();
 
-                // Check if it hits or goes off-screen
                 if (Math.abs(x - targetX) < size && y > 350 - size && y < 350) {
                     callback(true);
                 } else if (x > 600 || x < 0 || y > 400) {
@@ -86,7 +113,7 @@
             animationFrameId = requestAnimationFrame(step);
         }
 
-        // Handle hit effect
+        // Hit effect
         function triggerHitEffect(target) {
             hitEffect = { target, time: 10 };
             const shake = setInterval(() => {
@@ -96,14 +123,13 @@
             }, 50);
         }
 
-        // AI turn logic
+        // AI turn
         function aiTurn() {
             setTimeout(() => {
-                let angle = Math.random() * 30 + 30; // 30-60 degrees
-                let power = Math.random() * 40 + 40; // 40-80 power
-                // Adjust if last shot missed (basic AI)
+                let angle = Math.random() * 30 + 30;
+                let power = Math.random() * 40 + 40;
                 if (aiLastMissed) {
-                    angle += Math.random() * 10 - 5; // Small tweak
+                    angle += Math.random() * 10 - 5;
                     power += Math.random() * 10 - 5;
                 }
                 angle = Math.min(90, Math.max(0, angle));
@@ -111,7 +137,7 @@
 
                 animateProjectile(aiPos.x, aiPos.y - size/2, angle, power, Math.random() > 0.3 ? 'snowball' : 'frost_bomb', playerPos.x, (hit) => {
                     if (hit) {
-                        health.player -= ammo === 'snowball' ? 10 : 20;
+                        health.player -= power === 'snowball' ? 10 : 20;
                         triggerHitEffect('player');
                         aiLastMissed = false;
                     } else {
@@ -121,12 +147,12 @@
                     isPlayerTurn = true;
                     drawScene();
                 });
-            }, 1000); // 1-second "thinking" delay
+            }, 1000);
         }
 
         let aiLastMissed = false;
 
-        // Check win condition
+        // Game over check
         function checkGameOver() {
             if (health.player <= 0) {
                 alert('Grok’s AI wins!');
@@ -141,10 +167,12 @@
         function resetGame() {
             health = { player: 100, ai: 100 };
             isPlayerTurn = true;
+            aimPath = [];
             drawScene();
+            updateAim();
         }
 
-        // Fire button handler
+        // Fire button
         document.getElementById('fireButton').addEventListener('click', () => {
             if (!isPlayerTurn || animationFrameId) return;
             const angle = parseInt(document.getElementById('angle').value);
@@ -161,10 +189,13 @@
                     isPlayerTurn = false;
                     aiTurn();
                 }
+                aimPath = []; // Clear aim after firing
             });
         });
 
+        // Initial draw and aim update
         drawScene();
+        updateAim();
     </script>
 </body>
 </html>
