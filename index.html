@@ -2,96 +2,80 @@
 <head>
     <title>Grok Snowfight</title>
     <style>
-        canvas { 
-            border: 1px solid black; 
-            width: 100%; 
-            height: auto; 
-            max-width: 600px; 
-            touch-action: manipulation; 
-        }
-        #controls {
-            margin: 10px auto;
-            max-width: 600px;
-            padding: 10px;
-            text-align: center;
-            font-size: 16px;
-        }
-        .dial {
-            width: 100px;
-            height: 100px;
-            background: conic-gradient(#ddd, #ddd 0deg, #00f 0deg, #00f 360deg);
-            border-radius: 50%;
-            position: relative;
-            overflow: hidden;
-            margin: 10px auto;
-            touch-action: none;
-        }
-        .dial .inner {
-            width: 80px;
-            height: 80px;
-            background: #fff;
-            border-radius: 50%;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+        body {
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #87ceeb; /* Light blue background */
+            font-family: Arial, sans-serif;
         }
-        .dial .handle {
-            width: 10px;
-            height: 30px;
-            background: #00f;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform-origin: bottom;
-            transition: transform 0.1s;
-        }
-        button {
-            padding: 8px 16px;
-            font-size: 16px;
-            margin: 5px;
+        canvas {
+            border: 1px solid black;
+            width: 100%;
+            max-width: 600px;
+            height: auto;
             touch-action: manipulation;
         }
+        #gameContainer {
+            text-align: center;
+            padding: 10px;
+            max-width: 600px;
+            width: 100%;
+        }
+        #controls {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            margin: 0 10px;
+            font-size: 16px;
+        }
+        input[type="number"], select, button {
+            padding: 8px;
+            font-size: 16px;
+            margin: 5px;
+            vertical-align: middle;
+            touch-action: manipulation;
+        }
+        input[type="range"] {
+            width: 200px;
+            margin: 0 10px;
+            vertical-align: middle;
+        }
         @media (max-width: 600px) {
-            #controls {
+            label { font-size: 14px; }
+            input[type="number"], select, button {
+                padding: 6px;
                 font-size: 14px;
+                margin: 3px;
             }
-            .dial {
-                width: 80px;
-                height: 80px;
-            }
-            .dial .inner {
-                width: 64px;
-                height: 64px;
-                font-size: 12px;
-            }
-            button {
-                padding: 6px 12px;
-                font-size: 14px;
-            }
+            input[type="range"] { width: 150px; }
+            #controls { padding: 5px; }
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="600" height="400"></canvas>
-    <div id="controls">
-        <label for="angle">Angle (0-90):</label>
-        <input type="number" id="angle" min="0" max="90" value="45" oninput="updateAim()">
-        <div class="dial" id="powerDial">
-            <div class="inner">Power: <span id="powerValue">50</span></div>
-            <div class="handle" id="powerHandle"></div>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <div id="controls">
+            <label for="angle">Angle (0-90):</label>
+            <input type="number" id="angle" min="0" max="90" value="45" oninput="updateAim()">
+            <label for="power">Power:</label>
+            <input type="range" id="power" min="0" max="100" value="50" oninput="updatePower()">
+            <label for="ammo">Ammo:</label>
+            <select id="ammo">
+                <option value="snowball">Snowball</option>
+                <option value="frost_bomb">Frost Bomb</option>
+            </select>
+            <button id="loadButton">Load Snow</button>
+            <button id="fireButton">Fire</button>
         </div>
-        <label for="ammo">Ammo:</label>
-        <select id="ammo">
-            <option value="snowball">Snowball</option>
-            <option value="frost_bomb">Frost Bomb</option>
-        </select>
-        <button id="loadButton">Load Snow</button>
-        <button id="fireButton">Fire</button>
     </div>
     <script>
         const canvas = document.getElementById('gameCanvas');
@@ -105,12 +89,11 @@
         let animationFrameId = null;
         let hitEffect = { target: null, time: 0 };
         let aimPoint = { x: 0, y: 0 };
-        let ammo = { player: 10, ai: 10 };
+        let ammo = { player: 20, ai: 20 }; // Increased to 20
         let snowballSize = { player: 0, ai: 0 };
         let maxSnowballSize = 100;
         let iceBlocks = [];
-        let centralWall = { x: 280, y: 150, width: 40, height: 200, health: 100 };
-        let power = 50; // Initial power for dial
+        let centralWall = { x: 280, y: 350 - 200, width: 40, height: 200, health: 100 }; // Anchored at bottom
 
         // Initialize ice blocks
         function initIceBlocks() {
@@ -120,13 +103,12 @@
                 const height = 10 + Math.random() * 20;
                 const x = 150 + Math.random() * 300;
                 const y = 50 + Math.random() * 200;
-                iceBlocks.push({ x, y, width, height, health: width * 1 });
+                iceBlocks.push({ x, y, width, height, health: width * 1, cracked: false });
             }
         }
 
         // Draw the scene
         function drawScene() {
-            // Responsive canvas scaling
             const scale = Math.min(canvas.width / 600, canvas.height / 400);
             ctx.scale(scale, scale);
             ctx.clearRect(0, 0, 600, 400);
@@ -153,17 +135,26 @@
             ctx.fillRect(playerPos.x - 30, playerPos.y, 20, -ammo.player * 2);
             ctx.fillRect(aiPos.x + 10, aiPos.y, 20, -ammo.ai * 2);
 
-            // Draw central wall
+            // Draw central wall (anchored at bottom)
             if (centralWall.health > 0) {
                 ctx.fillStyle = 'lightblue';
-                ctx.fillRect(centralWall.x, centralWall.y, centralWall.width, centralWall.height);
+                ctx.fillRect(centralWall.x, centralWall.y + (200 - centralWall.height), centralWall.width, centralWall.height);
             }
 
-            // Draw ice blocks
+            // Draw ice blocks with cracks
             iceBlocks.forEach(block => {
                 if (block.health > 0) {
                     ctx.fillStyle = 'lightblue';
                     ctx.fillRect(block.x - block.width/2, block.y - block.height/2, block.width, block.height);
+                    if (block.cracked) {
+                        ctx.strokeStyle = 'black';
+                        ctx.beginPath();
+                        ctx.moveTo(block.x - block.width/2, block.y - block.height/2);
+                        ctx.lineTo(block.x + block.width/2, block.y + block.height/2);
+                        ctx.moveTo(block.x + block.width/2, block.y - block.height/2);
+                        ctx.lineTo(block.x - block.width/2, block.y + block.height/2);
+                        ctx.stroke();
+                    }
                 }
             });
 
@@ -174,22 +165,22 @@
                 ctx.arc(aimPoint.x, aimPoint.y, 5, 0, Math.PI * 2);
                 ctx.fill();
             }
-            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset scale
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
         }
 
-        // Update aiming point (halved radius to 100px)
+        // Update aiming point
         function updateAim() {
             if (!isPlayerTurn || animationFrameId) return;
             const angle = parseInt(document.getElementById('angle').value) * Math.PI / 180;
-            const radius = 100; // Halved from 200px
+            const radius = 100;
             let x = playerPos.x + radius * Math.cos(angle);
             let y = playerPos.y - size/2 - radius * Math.sin(angle);
 
             // Check collision with central wall
             if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
-                y >= centralWall.y && y <= centralWall.y + centralWall.height) {
+                y >= centralWall.y && y <= centralWall.y + 200) {
                 x = centralWall.x + (x > centralWall.x + centralWall.width/2 ? centralWall.width : 0);
-                y = centralWall.y + centralWall.height;
+                y = centralWall.y + 200;
             }
 
             // Check collision with ice blocks
@@ -206,48 +197,23 @@
             drawScene();
         }
 
-        // Power dial control
-        const dial = document.getElementById('powerDial');
-        const handle = document.getElementById('powerHandle');
-        const powerValue = document.getElementById('powerValue');
-        let isDragging = false;
-
-        function updatePowerDial(e) {
-            if (!isDragging) return;
-            const rect = dial.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            const dx = e.clientX - centerX;
-            const dy = e.clientY - centerY;
-            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            angle = (angle < 0) ? angle + 360 : angle;
-            power = Math.round((angle / 360) * 100);
-            if (power < 0) power = 0;
-            if (power > 100) power = 100;
-            const rotate = `rotate(${(power / 100) * 360 - 90}deg)`;
-            handle.style.transform = rotate + ` translate(-50%, 0)`;
-            powerValue.textContent = power;
+        // Update power from slider
+        function updatePower() {
+            power = parseInt(document.getElementById('power').value);
             updateAim();
         }
 
-        dial.addEventListener('mousedown', () => isDragging = true);
-        dial.addEventListener('touchstart', (e) => { e.preventDefault(); isDragging = true; }, { passive: false });
-        document.addEventListener('mousemove', updatePowerDial);
-        document.addEventListener('touchmove', (e) => updatePowerDial(e.touches[0]), { passive: false });
-        document.addEventListener('mouseup', () => isDragging = false);
-        document.addEventListener('touchend', () => isDragging = false);
-
-        // Animate projectile
+        // Animate projectile (faster movement)
         function animateProjectile(startX, startY, angle, power, ammo, targetX, callback) {
             let t = 0;
-            const v = power / 10;
+            const v = power / 5; // Increased speed (was /10)
             const theta = angle * Math.PI / 180;
             const vx = v * Math.cos(theta);
             const vyInitial = v * Math.sin(theta);
             const sizeFactor = snowballSize[isPlayerTurn ? 'player' : 'ai'] / maxSnowballSize;
 
             function step() {
-                t += 0.1 * (1 + sizeFactor);
+                t += 0.05 * (1 + sizeFactor); // Faster increment
                 const x = startX + vx * t / (1 + sizeFactor);
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
@@ -261,7 +227,7 @@
                 ctx.stroke();
 
                 if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
-                    y >= centralWall.y && y <= centralWall.y + centralWall.height) {
+                    y >= centralWall.y && y <= centralWall.y + 200) {
                     centralWall.health -= ammo === 'snowball' ? 10 : 20;
                     centralWall.height = centralWall.health * 2;
                     if (centralWall.health <= 0) centralWall.health = 0;
@@ -275,6 +241,7 @@
                     if (block.health > 0 && x >= block.x - block.width/2 && x <= block.x + block.width/2 &&
                         y >= block.y - block.height/2 && y <= block.y + block.height/2) {
                         block.health -= ammo === 'snowball' ? 10 : 20;
+                        block.cracked = block.health < block.width * 0.5; // Crack when half health
                         if (block.health <= 0) block.health = 0;
                         cancelAnimationFrame(animationFrameId);
                         animationFrameId = null;
@@ -370,9 +337,9 @@
         // Reset game
         function resetGame() {
             health = { player: 100, ai: 100 };
-            ammo = { player: 10, ai: 10 };
+            ammo = { player: 20, ai: 20 };
             snowballSize = { player: 0, ai: 0 };
-            centralWall = { x: 280, y: 150, width: 40, height: 200, health: 100 };
+            centralWall = { x: 280, y: 350 - 200, width: 40, height: 200, health: 100 };
             initIceBlocks();
             isPlayerTurn = true;
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
