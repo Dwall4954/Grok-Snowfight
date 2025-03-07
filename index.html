@@ -9,8 +9,14 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #87ceeb; /* Light blue background */
+            background-color: #87ceeb; /* Light blue like the pic */
             font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            text-align: center;
+            padding: 10px;
+            max-width: 600px;
+            width: 100%;
         }
         canvas {
             border: 1px solid black;
@@ -18,12 +24,6 @@
             max-width: 600px;
             height: auto;
             touch-action: manipulation;
-        }
-        #gameContainer {
-            text-align: center;
-            padding: 10px;
-            max-width: 600px;
-            width: 100%;
         }
         #controls {
             margin: 10px 0;
@@ -80,25 +80,25 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const playerPos = { x: 100, y: 350 };
-        const aiPos = { x: 500, y: 350 };
-        const size = 40;
+        const playerPos = { x: 50, y: 350 }; // Closer to left edge
+        const aiPos = { x: 550, y: 350 };    // Closer to right edge
+        const size = 30; // Smaller for penguin-like figures
         const g = 0.2;
         let health = { player: 100, ai: 100 };
         let isPlayerTurn = true;
         let animationFrameId = null;
         let hitEffect = { target: null, time: 0 };
         let aimPoint = { x: 0, y: 0 };
-        let ammo = { player: 20, ai: 20 }; // Increased to 20
+        let ammo = { player: 20, ai: 20 };
         let snowballSize = { player: 0, ai: 0 };
         let maxSnowballSize = 100;
         let iceBlocks = [];
-        let centralWall = { x: 280, y: 350 - 200, width: 40, height: 200, health: 100 }; // Anchored at bottom
+        let centralWall = { x: 280, y: 350 - 200, width: 40, height: 200, health: 100 };
 
         // Initialize ice blocks
         function initIceBlocks() {
             iceBlocks = [];
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 4; i++) { // More blocks like the pic
                 const width = 20 + Math.random() * 40;
                 const height = 10 + Math.random() * 20;
                 const x = 150 + Math.random() * 300;
@@ -113,16 +113,16 @@
             ctx.scale(scale, scale);
             ctx.clearRect(0, 0, 600, 400);
             ctx.fillStyle = 'white';
-            ctx.fillRect(0, 350, 600, 50);
+            ctx.fillRect(0, 350, 600, 50); // Ground
 
-            // Draw player and AI
+            // Draw player and AI (penguin-like ovals)
             ctx.fillStyle = hitEffect.target === 'player' && hitEffect.time > 0 ? 'red' : 'blue';
             ctx.beginPath();
-            ctx.arc(playerPos.x, playerPos.y - size/2, size/2, 0, Math.PI * 2);
+            ctx.ellipse(playerPos.x, playerPos.y - size/2, 15, 20, 0, 0, Math.PI * 2); // Oval for penguin
             ctx.fill();
             ctx.fillStyle = hitEffect.target === 'ai' && hitEffect.time > 0 ? 'red' : 'orange';
             ctx.beginPath();
-            ctx.arc(aiPos.x, aiPos.y - size/2, size/2, 0, Math.PI * 2);
+            ctx.ellipse(aiPos.x, aiPos.y - size/2, 15, 20, 0, Math.PI * 2);
             ctx.fill();
 
             // Draw health bars
@@ -130,10 +130,11 @@
             ctx.fillRect(playerPos.x - 20, playerPos.y - size - 10, health.player / 2, 5);
             ctx.fillRect(aiPos.x - 20, aiPos.y - size - 10, health.ai / 2, 5);
 
-            // Draw snow piles
+            // Draw tall snowpiles on edges, shortening with ammo
             ctx.fillStyle = 'lightgray';
-            ctx.fillRect(playerPos.x - 30, playerPos.y, 20, -ammo.player * 2);
-            ctx.fillRect(aiPos.x + 10, aiPos.y, 20, -ammo.ai * 2);
+            const maxSnowHeight = 150; // Tall like the pic
+            ctx.fillRect(10, 350 - maxSnowHeight, 30, maxSnowHeight * (ammo.player / 20)); // Left pile
+            ctx.fillRect(560, 350 - maxSnowHeight, 30, maxSnowHeight * (ammo.ai / 20));    // Right pile
 
             // Draw central wall (anchored at bottom)
             if (centralWall.health > 0) {
@@ -176,14 +177,12 @@
             let x = playerPos.x + radius * Math.cos(angle);
             let y = playerPos.y - size/2 - radius * Math.sin(angle);
 
-            // Check collision with central wall
             if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
                 y >= centralWall.y && y <= centralWall.y + 200) {
                 x = centralWall.x + (x > centralWall.x + centralWall.width/2 ? centralWall.width : 0);
                 y = centralWall.y + 200;
             }
 
-            // Check collision with ice blocks
             for (let block of iceBlocks) {
                 if (block.health > 0 && x >= block.x - block.width/2 && x <= block.x + block.width/2 &&
                     y >= block.y - block.height/2 && y <= block.y + block.height/2) {
@@ -203,17 +202,17 @@
             updateAim();
         }
 
-        // Animate projectile (faster movement)
+        // Animate projectile (much faster movement)
         function animateProjectile(startX, startY, angle, power, ammo, targetX, callback) {
             let t = 0;
-            const v = power / 5; // Increased speed (was /10)
+            const v = power / 2; // Even faster (was /5)
             const theta = angle * Math.PI / 180;
             const vx = v * Math.cos(theta);
             const vyInitial = v * Math.sin(theta);
             const sizeFactor = snowballSize[isPlayerTurn ? 'player' : 'ai'] / maxSnowballSize;
 
             function step() {
-                t += 0.05 * (1 + sizeFactor); // Faster increment
+                t += 0.02 * (1 + sizeFactor); // Much faster increment
                 const x = startX + vx * t / (1 + sizeFactor);
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
@@ -241,7 +240,7 @@
                     if (block.health > 0 && x >= block.x - block.width/2 && x <= block.x + block.width/2 &&
                         y >= block.y - block.height/2 && y <= block.y + block.height/2) {
                         block.health -= ammo === 'snowball' ? 10 : 20;
-                        block.cracked = block.health < block.width * 0.5; // Crack when half health
+                        block.cracked = block.health < block.width * 0.5;
                         if (block.health <= 0) block.health = 0;
                         cancelAnimationFrame(animationFrameId);
                         animationFrameId = null;
