@@ -2,8 +2,78 @@
 <head>
     <title>Grok Snowfight</title>
     <style>
-        canvas { border: 1px solid black; }
-        #controls { margin-top: 10px; }
+        canvas { 
+            border: 1px solid black; 
+            width: 100%; 
+            height: auto; 
+            max-width: 600px; 
+            touch-action: manipulation; 
+        }
+        #controls {
+            margin: 10px auto;
+            max-width: 600px;
+            padding: 10px;
+            text-align: center;
+            font-size: 16px;
+        }
+        .dial {
+            width: 100px;
+            height: 100px;
+            background: conic-gradient(#ddd, #ddd 0deg, #00f 0deg, #00f 360deg);
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            margin: 10px auto;
+            touch-action: none;
+        }
+        .dial .inner {
+            width: 80px;
+            height: 80px;
+            background: #fff;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .dial .handle {
+            width: 10px;
+            height: 30px;
+            background: #00f;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: bottom;
+            transition: transform 0.1s;
+        }
+        button {
+            padding: 8px 16px;
+            font-size: 16px;
+            margin: 5px;
+            touch-action: manipulation;
+        }
+        @media (max-width: 600px) {
+            #controls {
+                font-size: 14px;
+            }
+            .dial {
+                width: 80px;
+                height: 80px;
+            }
+            .dial .inner {
+                width: 64px;
+                height: 64px;
+                font-size: 12px;
+            }
+            button {
+                padding: 6px 12px;
+                font-size: 14px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -11,8 +81,10 @@
     <div id="controls">
         <label for="angle">Angle (0-90):</label>
         <input type="number" id="angle" min="0" max="90" value="45" oninput="updateAim()">
-        <label for="power">Power (1-100):</label>
-        <input type="number" id="power" min="1" max="100" value="50" oninput="updateAim()">
+        <div class="dial" id="powerDial">
+            <div class="inner">Power: <span id="powerValue">50</span></div>
+            <div class="handle" id="powerHandle"></div>
+        </div>
         <label for="ammo">Ammo:</label>
         <select id="ammo">
             <option value="snowball">Snowball</option>
@@ -32,30 +104,34 @@
         let isPlayerTurn = true;
         let animationFrameId = null;
         let hitEffect = { target: null, time: 0 };
-        let aimPoint = { x: 0, y: 0 }; // Fixed-radius aiming point
-        let ammo = { player: 10, ai: 10 }; // Snow pile ammo
-        let snowballSize = { player: 0, ai: 0 }; // Current snowball size (0-100)
-        let maxSnowballSize = 100; // Max size for damage calc
+        let aimPoint = { x: 0, y: 0 };
+        let ammo = { player: 10, ai: 10 };
+        let snowballSize = { player: 0, ai: 0 };
+        let maxSnowballSize = 100;
         let iceBlocks = [];
-        let centralWall = { x: 280, y: 150, width: 40, height: 200, health: 100 }; // Centered wall
+        let centralWall = { x: 280, y: 150, width: 40, height: 200, health: 100 };
+        let power = 50; // Initial power for dial
 
-        // Initialize ice blocks (random sizes)
+        // Initialize ice blocks
         function initIceBlocks() {
             iceBlocks = [];
             for (let i = 0; i < 3; i++) {
-                const width = 20 + Math.random() * 40; // 20-60
-                const height = 10 + Math.random() * 20; // 10-30
-                const x = 150 + Math.random() * 300; // Spread across middle
-                const y = 50 + Math.random() * 200; // Above ground
+                const width = 20 + Math.random() * 40;
+                const height = 10 + Math.random() * 20;
+                const x = 150 + Math.random() * 300;
+                const y = 50 + Math.random() * 200;
                 iceBlocks.push({ x, y, width, height, health: width * 1 });
             }
         }
 
         // Draw the scene
         function drawScene() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Responsive canvas scaling
+            const scale = Math.min(canvas.width / 600, canvas.height / 400);
+            ctx.scale(scale, scale);
+            ctx.clearRect(0, 0, 600, 400);
             ctx.fillStyle = 'white';
-            ctx.fillRect(0, 350, 600, 50); // Snowy ground
+            ctx.fillRect(0, 350, 600, 50);
 
             // Draw player and AI
             ctx.fillStyle = hitEffect.target === 'player' && hitEffect.time > 0 ? 'red' : 'blue';
@@ -72,7 +148,7 @@
             ctx.fillRect(playerPos.x - 20, playerPos.y - size - 10, health.player / 2, 5);
             ctx.fillRect(aiPos.x - 20, aiPos.y - size - 10, health.ai / 2, 5);
 
-            // Draw snow piles (simple rectangles for ammo)
+            // Draw snow piles
             ctx.fillStyle = 'lightgray';
             ctx.fillRect(playerPos.x - 30, playerPos.y, 20, -ammo.player * 2);
             ctx.fillRect(aiPos.x + 10, aiPos.y, 20, -ammo.ai * 2);
@@ -91,23 +167,23 @@
                 }
             });
 
-            // Draw aiming point (if player's turn and no animation)
+            // Draw aiming point
             if (isPlayerTurn && !animationFrameId) {
                 ctx.fillStyle = 'yellow';
                 ctx.beginPath();
                 ctx.arc(aimPoint.x, aimPoint.y, 5, 0, Math.PI * 2);
                 ctx.fill();
             }
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset scale
         }
 
-        // Update aiming point
+        // Update aiming point (halved radius to 100px)
         function updateAim() {
             if (!isPlayerTurn || animationFrameId) return;
             const angle = parseInt(document.getElementById('angle').value) * Math.PI / 180;
-            const power = parseInt(document.getElementById('power').value) / 10; // Scale for preview
-            const radius = 200; // Fixed aiming radius
+            const radius = 100; // Halved from 200px
             let x = playerPos.x + radius * Math.cos(angle);
-            let y = playerPos.y - size/2 - radius * Math.sin(angle); // Adjust for cannon height
+            let y = playerPos.y - size/2 - radius * Math.sin(angle);
 
             // Check collision with central wall
             if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
@@ -130,6 +206,37 @@
             drawScene();
         }
 
+        // Power dial control
+        const dial = document.getElementById('powerDial');
+        const handle = document.getElementById('powerHandle');
+        const powerValue = document.getElementById('powerValue');
+        let isDragging = false;
+
+        function updatePowerDial(e) {
+            if (!isDragging) return;
+            const rect = dial.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const dx = e.clientX - centerX;
+            const dy = e.clientY - centerY;
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            angle = (angle < 0) ? angle + 360 : angle;
+            power = Math.round((angle / 360) * 100);
+            if (power < 0) power = 0;
+            if (power > 100) power = 100;
+            const rotate = `rotate(${(power / 100) * 360 - 90}deg)`;
+            handle.style.transform = rotate + ` translate(-50%, 0)`;
+            powerValue.textContent = power;
+            updateAim();
+        }
+
+        dial.addEventListener('mousedown', () => isDragging = true);
+        dial.addEventListener('touchstart', (e) => { e.preventDefault(); isDragging = true; }, { passive: false });
+        document.addEventListener('mousemove', updatePowerDial);
+        document.addEventListener('touchmove', (e) => updatePowerDial(e.touches[0]), { passive: false });
+        document.addEventListener('mouseup', () => isDragging = false);
+        document.addEventListener('touchend', () => isDragging = false);
+
         // Animate projectile
         function animateProjectile(startX, startY, angle, power, ammo, targetX, callback) {
             let t = 0;
@@ -137,27 +244,26 @@
             const theta = angle * Math.PI / 180;
             const vx = v * Math.cos(theta);
             const vyInitial = v * Math.sin(theta);
-            const sizeFactor = snowballSize[isPlayerTurn ? 'player' : 'ai'] / maxSnowballSize; // Size affects speed
+            const sizeFactor = snowballSize[isPlayerTurn ? 'player' : 'ai'] / maxSnowballSize;
 
             function step() {
-                t += 0.1 * (1 + sizeFactor); // Slower for bigger snowballs
+                t += 0.1 * (1 + sizeFactor);
                 const x = startX + vx * t / (1 + sizeFactor);
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
 
                 ctx.fillStyle = ammo === 'snowball' ? 'gray' : 'cyan';
                 ctx.strokeStyle = 'black';
+                const radius = 5 + sizeFactor * 10;
                 ctx.beginPath();
-                const radius = 5 + sizeFactor * 10; // Bigger snowball size
                 ctx.arc(x, y, radius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
 
-                // Check collisions
                 if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
                     y >= centralWall.y && y <= centralWall.y + centralWall.height) {
                     centralWall.health -= ammo === 'snowball' ? 10 : 20;
-                    centralWall.height = centralWall.health * 2; // Shrink 2px per health
+                    centralWall.height = centralWall.health * 2;
                     if (centralWall.health <= 0) centralWall.health = 0;
                     cancelAnimationFrame(animationFrameId);
                     animationFrameId = null;
@@ -202,11 +308,11 @@
             }, 50);
         }
 
-        // Load snow into cannon
+        // Load snow
         function loadSnow(player) {
             if (ammo[player] > 0 && snowballSize[player] < maxSnowballSize) {
                 ammo[player]--;
-                snowballSize[player] += 20; // Increase by 20 per load
+                snowballSize[player] += 20;
                 if (snowballSize[player] > maxSnowballSize) snowballSize[player] = maxSnowballSize;
                 drawScene();
             }
@@ -224,16 +330,16 @@
                 angle = Math.min(90, Math.max(0, angle));
                 power = Math.min(100, Math.max(1, power));
 
-                if (ammo.ai > 0 && snowballSize.ai === 0) loadSnow('ai'); // AI loads if needed
+                if (ammo.ai > 0 && snowballSize.ai === 0) loadSnow('ai');
                 if (snowballSize.ai > 0) {
                     animateProjectile(aiPos.x, aiPos.y - size/2, angle, power, Math.random() > 0.3 ? 'snowball' : 'frost_bomb', playerPos.x, (hit) => {
                         if (hit) {
-                            health.player -= (10 + snowballSize.ai / 5); // More damage with size
+                            health.player -= (10 + snowballSize.ai / 5);
                             triggerHitEffect('player');
-                            snowballSize.ai = 0; // Reset after firing
+                            snowballSize.ai = 0;
                             aiLastMissed = false;
                         } else {
-                            snowballSize.ai = 0; // Reset on miss
+                            snowballSize.ai = 0;
                             aiLastMissed = true;
                         }
                         checkGameOver();
@@ -283,12 +389,11 @@
         document.getElementById('fireButton').addEventListener('click', () => {
             if (!isPlayerTurn || animationFrameId || snowballSize.player === 0) return;
             const angle = parseInt(document.getElementById('angle').value);
-            const power = parseInt(document.getElementById('power').value);
             const ammoType = document.getElementById('ammo').value;
 
             animateProjectile(playerPos.x, playerPos.y - size/2, angle, power, ammoType, aiPos.x, (hit) => {
                 if (hit) {
-                    health.ai -= (10 + snowballSize.player / 5); // Size-based damage
+                    health.ai -= (10 + snowballSize.player / 5);
                     triggerHitEffect('ai');
                     snowballSize.player = 0;
                 } else {
