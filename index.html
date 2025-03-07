@@ -18,6 +18,7 @@
             <option value="snowball">Snowball</option>
             <option value="frost_bomb">Frost Bomb</option>
         </select>
+        <button id="loadButton">Load Snow</button>
         <button id="fireButton">Fire</button>
     </div>
     <script>
@@ -31,13 +32,32 @@
         let isPlayerTurn = true;
         let animationFrameId = null;
         let hitEffect = { target: null, time: 0 };
-        let aimPath = [];
+        let aimPoint = { x: 0, y: 0 }; // Fixed-radius aiming point
+        let ammo = { player: 10, ai: 10 }; // Snow pile ammo
+        let snowballSize = { player: 0, ai: 0 }; // Current snowball size (0-100)
+        let maxSnowballSize = 100; // Max size for damage calc
+        let iceBlocks = [];
+        let centralWall = { x: 280, y: 150, width: 40, height: 200, health: 100 }; // Centered wall
+
+        // Initialize ice blocks (random sizes)
+        function initIceBlocks() {
+            iceBlocks = [];
+            for (let i = 0; i < 3; i++) {
+                const width = 20 + Math.random() * 40; // 20-60
+                const height = 10 + Math.random() * 20; // 10-30
+                const x = 150 + Math.random() * 300; // Spread across middle
+                const y = 50 + Math.random() * 200; // Above ground
+                iceBlocks.push({ x, y, width, height, health: width * 1 });
+            }
+        }
 
         // Draw the scene
         function drawScene() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'white';
-            ctx.fillRect(0, 350, 600, 50);
+            ctx.fillRect(0, 350, 600, 50); // Snowy ground
+
+            // Draw player and AI
             ctx.fillStyle = hitEffect.target === 'player' && hitEffect.time > 0 ? 'red' : 'blue';
             ctx.beginPath();
             ctx.arc(playerPos.x, playerPos.y - size/2, size/2, 0, Math.PI * 2);
@@ -46,36 +66,67 @@
             ctx.beginPath();
             ctx.arc(aiPos.x, aiPos.y - size/2, size/2, 0, Math.PI * 2);
             ctx.fill();
+
+            // Draw health bars
             ctx.fillStyle = 'green';
             ctx.fillRect(playerPos.x - 20, playerPos.y - size - 10, health.player / 2, 5);
             ctx.fillRect(aiPos.x - 20, aiPos.y - size - 10, health.ai / 2, 5);
 
-            if (isPlayerTurn && !animationFrameId) {
-                ctx.strokeStyle = 'gray';
-                ctx.beginPath();
-                ctx.moveTo(playerPos.x, playerPos.y - size/2);
-                for (let point of aimPath) {
-                    ctx.lineTo(point.x, point.y);
+            // Draw snow piles (simple rectangles for ammo)
+            ctx.fillStyle = 'lightgray';
+            ctx.fillRect(playerPos.x - 30, playerPos.y, 20, -ammo.player * 2);
+            ctx.fillRect(aiPos.x + 10, aiPos.y, 20, -ammo.ai * 2);
+
+            // Draw central wall
+            if (centralWall.health > 0) {
+                ctx.fillStyle = 'lightblue';
+                ctx.fillRect(centralWall.x, centralWall.y, centralWall.width, centralWall.height);
+            }
+
+            // Draw ice blocks
+            iceBlocks.forEach(block => {
+                if (block.health > 0) {
+                    ctx.fillStyle = 'lightblue';
+                    ctx.fillRect(block.x - block.width/2, block.y - block.height/2, block.width, block.height);
                 }
-                ctx.stroke();
+            });
+
+            // Draw aiming point (if player's turn and no animation)
+            if (isPlayerTurn && !animationFrameId) {
+                ctx.fillStyle = 'yellow';
+                ctx.beginPath();
+                ctx.arc(aimPoint.x, aimPoint.y, 5, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
 
-        // Update aiming trajectory
+        // Update aiming point
         function updateAim() {
-            const angle = parseInt(document.getElementById('angle').value);
-            const power = parseInt(document.getElementById('power').value);
-            const v = power / 10;
-            const theta = angle * Math.PI / 180;
-            const vx = v * Math.cos(theta);
-            const vyInitial = v * Math.sin(theta);
-            aimPath = [];
-            for (let t = 0; t < 50; t += 0.5) {
-                const x = playerPos.x + vx * t;
-                const y = (playerPos.y - size/2) - (vyInitial * t - 0.5 * g * t * t);
-                if (x > 600 || y > 400) break;
-                aimPath.push({ x, y });
+            if (!isPlayerTurn || animationFrameId) return;
+            const angle = parseInt(document.getElementById('angle').value) * Math.PI / 180;
+            const power = parseInt(document.getElementById('power').value) / 10; // Scale for preview
+            const radius = 200; // Fixed aiming radius
+            let x = playerPos.x + radius * Math.cos(angle);
+            let y = playerPos.y - size/2 - radius * Math.sin(angle); // Adjust for cannon height
+
+            // Check collision with central wall
+            if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
+                y >= centralWall.y && y <= centralWall.y + centralWall.height) {
+                x = centralWall.x + (x > centralWall.x + centralWall.width/2 ? centralWall.width : 0);
+                y = centralWall.y + centralWall.height;
             }
+
+            // Check collision with ice blocks
+            for (let block of iceBlocks) {
+                if (block.health > 0 && x >= block.x - block.width/2 && x <= block.x + block.width/2 &&
+                    y >= block.y - block.height/2 && y <= block.y + block.height/2) {
+                    x = block.x + (x > block.x ? block.width/2 : -block.width/2);
+                    y = block.y + block.height/2;
+                    break;
+                }
+            }
+
+            aimPoint = { x, y };
             drawScene();
         }
 
@@ -86,19 +137,45 @@
             const theta = angle * Math.PI / 180;
             const vx = v * Math.cos(theta);
             const vyInitial = v * Math.sin(theta);
+            const sizeFactor = snowballSize[isPlayerTurn ? 'player' : 'ai'] / maxSnowballSize; // Size affects speed
 
             function step() {
-                t += 0.1;
-                const x = startX + vx * t;
+                t += 0.1 * (1 + sizeFactor); // Slower for bigger snowballs
+                const x = startX + vx * t / (1 + sizeFactor);
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
 
                 ctx.fillStyle = ammo === 'snowball' ? 'gray' : 'cyan';
                 ctx.strokeStyle = 'black';
                 ctx.beginPath();
-                ctx.arc(x, y, ammo === 'snowball' ? 5 : 10, 0, Math.PI * 2);
+                const radius = 5 + sizeFactor * 10; // Bigger snowball size
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
+
+                // Check collisions
+                if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
+                    y >= centralWall.y && y <= centralWall.y + centralWall.height) {
+                    centralWall.health -= ammo === 'snowball' ? 10 : 20;
+                    centralWall.height = centralWall.health * 2; // Shrink 2px per health
+                    if (centralWall.health <= 0) centralWall.health = 0;
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                    callback(false);
+                    return;
+                }
+
+                for (let block of iceBlocks) {
+                    if (block.health > 0 && x >= block.x - block.width/2 && x <= block.x + block.width/2 &&
+                        y >= block.y - block.height/2 && y <= block.y + block.height/2) {
+                        block.health -= ammo === 'snowball' ? 10 : 20;
+                        if (block.health <= 0) block.health = 0;
+                        cancelAnimationFrame(animationFrameId);
+                        animationFrameId = null;
+                        callback(false);
+                        return;
+                    }
+                }
 
                 if (Math.abs(x - targetX) < size && y > 350 - size && y < 350) {
                     cancelAnimationFrame(animationFrameId);
@@ -125,6 +202,16 @@
             }, 50);
         }
 
+        // Load snow into cannon
+        function loadSnow(player) {
+            if (ammo[player] > 0 && snowballSize[player] < maxSnowballSize) {
+                ammo[player]--;
+                snowballSize[player] += 20; // Increase by 20 per load
+                if (snowballSize[player] > maxSnowballSize) snowballSize[player] = maxSnowballSize;
+                drawScene();
+            }
+        }
+
         // AI turn
         function aiTurn() {
             setTimeout(() => {
@@ -137,19 +224,27 @@
                 angle = Math.min(90, Math.max(0, angle));
                 power = Math.min(100, Math.max(1, power));
 
-                animateProjectile(aiPos.x, aiPos.y - size/2, angle, power, Math.random() > 0.3 ? 'snowball' : 'frost_bomb', playerPos.x, (hit) => {
-                    if (hit) {
-                        health.player -= 10; // Fixed damage bug
-                        triggerHitEffect('player');
-                        aiLastMissed = false;
-                    } else {
-                        aiLastMissed = true;
-                    }
-                    checkGameOver();
+                if (ammo.ai > 0 && snowballSize.ai === 0) loadSnow('ai'); // AI loads if needed
+                if (snowballSize.ai > 0) {
+                    animateProjectile(aiPos.x, aiPos.y - size/2, angle, power, Math.random() > 0.3 ? 'snowball' : 'frost_bomb', playerPos.x, (hit) => {
+                        if (hit) {
+                            health.player -= (10 + snowballSize.ai / 5); // More damage with size
+                            triggerHitEffect('player');
+                            snowballSize.ai = 0; // Reset after firing
+                            aiLastMissed = false;
+                        } else {
+                            snowballSize.ai = 0; // Reset on miss
+                            aiLastMissed = true;
+                        }
+                        checkGameOver();
+                        isPlayerTurn = true;
+                        drawScene();
+                        updateAim();
+                    });
+                } else {
                     isPlayerTurn = true;
-                    drawScene();
-                    updateAim(); // Refresh aim after AI turn
-                });
+                    updateAim();
+                }
             }, 1000);
         }
 
@@ -169,25 +264,35 @@
         // Reset game
         function resetGame() {
             health = { player: 100, ai: 100 };
+            ammo = { player: 10, ai: 10 };
+            snowballSize = { player: 0, ai: 0 };
+            centralWall = { x: 280, y: 150, width: 40, height: 200, health: 100 };
+            initIceBlocks();
             isPlayerTurn = true;
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
-            aimPath = [];
             drawScene();
             updateAim();
         }
 
-        // Fire button
+        // Event listeners
+        document.getElementById('loadButton').addEventListener('click', () => {
+            if (isPlayerTurn && !animationFrameId) loadSnow('player');
+        });
+
         document.getElementById('fireButton').addEventListener('click', () => {
-            if (!isPlayerTurn || animationFrameId) return;
+            if (!isPlayerTurn || animationFrameId || snowballSize.player === 0) return;
             const angle = parseInt(document.getElementById('angle').value);
             const power = parseInt(document.getElementById('power').value);
-            const ammo = document.getElementById('ammo').value;
+            const ammoType = document.getElementById('ammo').value;
 
-            animateProjectile(playerPos.x, playerPos.y - size/2, angle, power, ammo, aiPos.x, (hit) => {
+            animateProjectile(playerPos.x, playerPos.y - size/2, angle, power, ammoType, aiPos.x, (hit) => {
                 if (hit) {
-                    health.ai -= ammo === 'snowball' ? 10 : 20;
+                    health.ai -= (10 + snowballSize.player / 5); // Size-based damage
                     triggerHitEffect('ai');
+                    snowballSize.player = 0;
+                } else {
+                    snowballSize.player = 0;
                 }
                 checkGameOver();
                 if (health.ai > 0) {
@@ -200,6 +305,7 @@
             });
         });
 
+        initIceBlocks();
         drawScene();
         updateAim();
     </script>
