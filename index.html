@@ -9,7 +9,7 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #87ceeb; /* Light blue like the pic */
+            background-color: #6a9fbf; /* Darker blue to match the image */
             font-family: Arial, sans-serif;
         }
         #gameContainer {
@@ -80,9 +80,9 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        const playerPos = { x: 50, y: 350 }; // Closer to left edge
-        const aiPos = { x: 550, y: 350 };    // Closer to right edge
-        const size = 30; // Smaller for penguin-like figures
+        const playerPos = { x: 50, y: 350 }; // Left edge
+        const aiPos = { x: 550, y: 350 };    // Right edge
+        const size = 30;
         const g = 0.2;
         let health = { player: 100, ai: 100 };
         let isPlayerTurn = true;
@@ -98,11 +98,11 @@
         // Initialize ice blocks
         function initIceBlocks() {
             iceBlocks = [];
-            for (let i = 0; i < 4; i++) { // More blocks like the pic
+            for (let i = 0; i < 5; i++) {
                 const width = 20 + Math.random() * 40;
                 const height = 10 + Math.random() * 20;
-                const x = 150 + Math.random() * 300;
-                const y = 50 + Math.random() * 200;
+                const x = 100 + Math.random() * 400;
+                const y = 100 + Math.random() * 200;
                 iceBlocks.push({ x, y, width, height, health: width * 1, cracked: false });
             }
         }
@@ -112,41 +112,55 @@
             const scale = Math.min(canvas.width / 600, canvas.height / 400);
             ctx.scale(scale, scale);
             ctx.clearRect(0, 0, 600, 400);
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 350, 600, 50); // Ground
 
-            // Draw player and AI (penguin-like ovals)
+            // Draw gradient ground
+            const gradient = ctx.createLinearGradient(0, 350, 0, 400);
+            gradient.addColorStop(0, '#fff');
+            gradient.addColorStop(1, '#e0e0e0');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 350, 600, 50);
+
+            // Draw player and AI (penguin-like with hat)
             ctx.fillStyle = hitEffect.target === 'player' && hitEffect.time > 0 ? 'red' : 'blue';
             ctx.beginPath();
-            ctx.ellipse(playerPos.x, playerPos.y - size/2, 15, 20, 0, 0, Math.PI * 2); // Oval for penguin
+            ctx.ellipse(playerPos.x, playerPos.y - size/2, 15, 20, 0, 0, Math.PI * 2);
             ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.fillRect(playerPos.x - 5, playerPos.y - size - 5, 10, 5); // Hat
+
             ctx.fillStyle = hitEffect.target === 'ai' && hitEffect.time > 0 ? 'red' : 'orange';
             ctx.beginPath();
-            ctx.ellipse(aiPos.x, aiPos.y - size/2, 15, 20, 0, Math.PI * 2);
+            ctx.ellipse(aiPos.x, aiPos.y - size/2, 15, 20, 0, 0, Math.PI * 2);
             ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.fillRect(aiPos.x - 5, aiPos.y - size - 5, 10, 5); // Hat
 
             // Draw health bars
             ctx.fillStyle = 'green';
-            ctx.fillRect(playerPos.x - 20, playerPos.y - size - 10, health.player / 2, 5);
-            ctx.fillRect(aiPos.x - 20, aiPos.y - size - 10, health.ai / 2, 5);
+            ctx.fillRect(playerPos.x - 20, playerPos.y - size - 15, health.player / 2, 5);
+            ctx.fillRect(aiPos.x - 20, aiPos.y - size - 15, health.ai / 2, 5);
 
-            // Draw tall snowpiles on edges, shortening with ammo
+            // Draw tall snowpiles on far edges
             ctx.fillStyle = 'lightgray';
-            const maxSnowHeight = 150; // Tall like the pic
-            ctx.fillRect(10, 350 - maxSnowHeight, 30, maxSnowHeight * (ammo.player / 20)); // Left pile
-            ctx.fillRect(560, 350 - maxSnowHeight, 30, maxSnowHeight * (ammo.ai / 20));    // Right pile
+            const maxSnowHeight = 200;
+            ctx.fillRect(0, 350 - maxSnowHeight * (ammo.player / 20), 30, maxSnowHeight * (ammo.player / 20));
+            ctx.fillRect(570, 350 - maxSnowHeight * (ammo.ai / 20), 30, maxSnowHeight * (ammo.ai / 20));
 
             // Draw central wall (anchored at bottom)
             if (centralWall.health > 0) {
-                ctx.fillStyle = 'lightblue';
-                ctx.fillRect(centralWall.x, centralWall.y + (200 - centralWall.height), centralWall.width, centralWall.height);
+                ctx.fillStyle = 'rgba(173, 216, 230, 0.7)';
+                ctx.fillRect(centralWall.x, 350 - centralWall.height, centralWall.width, centralWall.height);
+                ctx.strokeStyle = 'white';
+                ctx.strokeRect(centralWall.x, 350 - centralWall.height, centralWall.width, centralWall.height);
             }
 
             // Draw ice blocks with cracks
             iceBlocks.forEach(block => {
                 if (block.health > 0) {
-                    ctx.fillStyle = 'lightblue';
+                    ctx.fillStyle = 'rgba(173, 216, 230, 0.7)';
                     ctx.fillRect(block.x - block.width/2, block.y - block.height/2, block.width, block.height);
+                    ctx.strokeStyle = 'white';
+                    ctx.strokeRect(block.x - block.width/2, block.y - block.height/2, block.width, block.height);
                     if (block.cracked) {
                         ctx.strokeStyle = 'black';
                         ctx.beginPath();
@@ -159,11 +173,16 @@
                 }
             });
 
-            // Draw aiming point
+            // Draw aiming point with faint line
             if (isPlayerTurn && !animationFrameId) {
+                ctx.strokeStyle = 'rgba(255, 255, 0, 0.3)';
+                ctx.beginPath();
+                ctx.moveTo(playerPos.x, playerPos.y - size/2);
+                ctx.lineTo(aimPoint.x, aimPoint.y);
+                ctx.stroke();
                 ctx.fillStyle = 'yellow';
                 ctx.beginPath();
-                ctx.arc(aimPoint.x, aimPoint.y, 5, 0, Math.PI * 2);
+                ctx.arc(aimPoint.x, aimPoint.y, 3, 0, Math.PI * 2);
                 ctx.fill();
             }
             ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -178,9 +197,9 @@
             let y = playerPos.y - size/2 - radius * Math.sin(angle);
 
             if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
-                y >= centralWall.y && y <= centralWall.y + 200) {
+                y >= 350 - centralWall.height && y <= 350) {
                 x = centralWall.x + (x > centralWall.x + centralWall.width/2 ? centralWall.width : 0);
-                y = centralWall.y + 200;
+                y = 350 - centralWall.height;
             }
 
             for (let block of iceBlocks) {
@@ -202,17 +221,17 @@
             updateAim();
         }
 
-        // Animate projectile (much faster movement)
+        // Animate projectile (faster movement)
         function animateProjectile(startX, startY, angle, power, ammo, targetX, callback) {
             let t = 0;
-            const v = power / 2; // Even faster (was /5)
+            const v = power / 1.5; // Faster velocity
             const theta = angle * Math.PI / 180;
             const vx = v * Math.cos(theta);
             const vyInitial = v * Math.sin(theta);
             const sizeFactor = snowballSize[isPlayerTurn ? 'player' : 'ai'] / maxSnowballSize;
 
             function step() {
-                t += 0.02 * (1 + sizeFactor); // Much faster increment
+                t += 0.005 * (1 + sizeFactor); // Fast increment
                 const x = startX + vx * t / (1 + sizeFactor);
                 const y = startY - (vyInitial * t - 0.5 * g * t * t);
                 drawScene();
@@ -226,7 +245,7 @@
                 ctx.stroke();
 
                 if (centralWall.health > 0 && x >= centralWall.x && x <= centralWall.x + centralWall.width &&
-                    y >= centralWall.y && y <= centralWall.y + 200) {
+                    y >= 350 - centralWall.height && y <= 350) {
                     centralWall.health -= ammo === 'snowball' ? 10 : 20;
                     centralWall.height = centralWall.health * 2;
                     if (centralWall.health <= 0) centralWall.health = 0;
